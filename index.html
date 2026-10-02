@@ -7,7 +7,7 @@
 <main class="wrap"><section class="hero"><h1>Your projects, your playground.</h1><p class="muted">Create website projects with index.html or Pls124site projects with a .PosLol file.</p></section>
 <section id="home"><div class="row" style="margin-top:20px"><h2 style="flex:2">Your projects</h2><button onclick="showCreate()">＋ New project</button></div><div id="projects"></div><p class="muted">Your drafts are saved in this browser. Use Share to add a copy to the public community library.</p><section class="panel"><div class="row"><div><h2>Community projects</h2><p class="muted">Browse, preview, and download projects shared by others.</p></div><button class="secondary" onclick="loadCommunity()">Refresh</button></div><div id="communityStatus" class="muted">Loading shared projects…</div><div id="communityProjects"></div></section></section>
 <section id="create" class="panel hidden"><h2>Create a project</h2><label>Project name</label><input id="pname" placeholder="My awesome project"><label>About this project</label><textarea id="pabout" placeholder="What are you building?"></textarea><label>Project type</label><select id="ptype"><option value="Website">Website (index.html)</option><option value="Pls124site">Pls124site (.PosLol)</option></select><div class="row"><button onclick="makeProject()">Next →</button><button class="secondary" onclick="cancelCreate()">Cancel</button></div></section>
-<section id="work" class="panel hidden"><div class="row"><div><h2 id="workTitle">Project</h2><p class="muted" id="workAbout"></p></div><button class="secondary" onclick="goHome()">← Projects</button></div><label>File</label><select id="fileChoice" onchange="selectFile()"></select><div class="filelist">You can edit the starter file below. Text files are stored locally in this demo.</div><textarea class="editor" id="editor" spellcheck="false"></textarea><div class="row"><button onclick="saveFile()">Save file</button><button onclick="shareProject()">Share to community</button><button class="secondary" onclick="preview()">Run preview</button><button class="secondary" onclick="downloadSite()">Download main file</button><button class="secondary" onclick="downloadProject()">Download project ZIP</button><button class="secondary" onclick="addFile()">＋ Add file</button><button class="danger" onclick="deleteProject()">Delete project</button></div><h3>Preview</h3><iframe id="previewFrame" title="Live website preview" sandbox="allow-scripts" style="width:100%;height:340px;background:white;border:1px solid #30363d;border-radius:8px"></iframe><div class="preview" id="preview" style="display:none"></div><p class="muted">Shared copies are publicly viewable and downloadable. Do not include passwords, private data, or secrets in project files.</p><p class="muted" id="route"></p></section>
+<section id="work" class="panel hidden"><div class="row"><div><h2 id="workTitle">Project</h2><p class="muted" id="workAbout"></p></div><button class="secondary" onclick="goHome()">← Projects</button></div><label>File</label><select id="fileChoice" onchange="selectFile()"></select><div class="filelist">You can edit the starter file below. Text files are stored locally in this demo.</div><textarea class="editor" id="editor" spellcheck="false"></textarea><div class="row"><button onclick="saveFile()">Save file</button><button onclick="shareProject()">Share & make website link</button><button class="secondary" onclick="preview()">Run preview</button><button class="secondary" onclick="downloadSite()">Download main file</button><button class="secondary" onclick="downloadProject()">Download project ZIP</button><button class="secondary" onclick="addFile()">＋ Add file</button><button class="danger" onclick="deleteProject()">Delete project</button></div><h3>Preview</h3><iframe id="previewFrame" title="Live website preview" sandbox="allow-scripts" style="width:100%;height:340px;background:white;border:1px solid #30363d;border-radius:8px"></iframe><div class="preview" id="preview" style="display:none"></div><p class="muted">Shared copies can be opened with a public website link. Do not include passwords, private data, or secrets in project files.</p><p class="muted" id="route"></p><p id="publishResult" class="muted"></p></section>
 </main>
 <script>
 'use strict';
@@ -55,11 +55,18 @@ async function shareProject(){
   current.files[$('fileChoice').value]=$('editor').value;persist();
   const payload={project_name:current.name,about:current.about||'',project_type:current.type,main_file:current.main,files:current.files};
   try{
-    const res=await fetch(SB_URL+'/rest/v1/shared_projects',{method:'POST',headers:{...apiHeaders,'Prefer':'return=minimal'},body:JSON.stringify(payload)});
+    const res=await fetch(SB_URL+'/rest/v1/shared_projects',{method:'POST',headers:{...apiHeaders,'Prefer':'return=representation'},body:JSON.stringify(payload)});
     if(!res.ok)throw new Error(await res.text());
-    alert('Shared to the community! Other people can now preview and download this copy.');
-    goHome();loadCommunity();
-  }catch(e){alert('Share failed. Run the Supabase SQL first, then try again.');console.error(e)}
+    const rows=await res.json(),id=rows[0]&&rows[0].id;
+    if(!id)throw new Error('The database did not return a project ID.');
+    const link=new URL(location.href);link.search='';link.hash='';link.searchParams.set('site',id);
+    $('publishResult').textContent='Your public website link: '+link.href;
+    $('route').textContent='Website link created. Copy it and share it with others.';
+    const copy=document.createElement('button');copy.className='secondary';copy.textContent='Copy website link';copy.onclick=async()=>{try{await navigator.clipboard.writeText(link.href);alert('Website link copied!')}catch(e){prompt('Copy this website link:',link.href)}};
+    $('publishResult').append(' ',copy);
+    alert('Project shared! Your website link is shown below the editor.');
+    loadCommunity();
+  }catch(e){alert('Could not create the website link. Check the Supabase table and policies, then try again.');console.error(e)}
 }
 function previewShared(p){
   const main=p.files&&p.files[p.main_file];
@@ -97,5 +104,18 @@ function downloadProject(){
   if(!current)return;current.files[$('fileChoice').value]=$('editor').value;persist();
   triggerDownload(zipBlob(current.files),(slug(current.name)||'project')+'.zip');
 }
+async function openPublishedSite(){
+  const id=new URLSearchParams(location.search).get('site');if(!id)return;
+  document.body.innerHTML='<main style="height:100vh;background:#fff"><div id="siteStatus" style="font:16px Arial;padding:20px;color:#222">Loading published website…</div><iframe id="publishedFrame" title="Published website" sandbox="allow-scripts allow-forms allow-modals" style="display:none;border:0;width:100%;height:100%"></iframe></main>';
+  try{
+    const res=await fetch(SB_URL+'/rest/v1/shared_projects?select=project_name,main_file,files&id=eq.'+encodeURIComponent(id)+'&limit=1',{headers:apiHeaders});
+    if(!res.ok)throw new Error('Unable to load site');
+    const rows=await res.json(),p=rows[0],html=p&&p.files&&p.files[p.main_file];
+    if(typeof html!=='string')throw new Error('Published page not found');
+    document.title=p.project_name+' — Website';
+    const frame=document.getElementById('publishedFrame');frame.srcdoc=html;frame.style.display='block';document.getElementById('siteStatus').remove();
+  }catch(e){document.getElementById('siteStatus').textContent='This website could not be found. The owner may have removed it.'}
+}
+openPublishedSite();
 loadCommunity();
 </script></body></html>
