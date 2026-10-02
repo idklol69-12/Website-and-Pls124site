@@ -60,7 +60,7 @@ async function shareProject(){
     if(!res.ok)throw new Error(await res.text());
     const rows=await res.json(),id=rows[0]&&rows[0].id;
     if(!id)throw new Error('The database did not return a project ID.');
-    const link=new URL(location.href);link.search='';link.hash='';link.pathname=link.pathname.replace(/\/?$/,'/')+encodeURIComponent(publicSlug(current.name))+'/';
+    const link=new URL(location.href);link.search='';link.hash='/'+encodeURIComponent(publicSlug(current.name))+'/';
     $('publishResult').textContent='Your public website link: '+link.href;
     $('route').textContent='Website link created. Copy it and share it with others.';
     const copy=document.createElement('button');copy.className='secondary';copy.textContent='Copy website link';copy.onclick=async()=>{try{await navigator.clipboard.writeText(link.href);alert('Website link copied!')}catch(e){prompt('Copy this website link:',link.href)}};
@@ -107,9 +107,10 @@ function downloadProject(){
 }
 async function openPublishedSite(){
   const oldId=new URLSearchParams(location.search).get('site');
+  const hashRoute=location.hash.startsWith('#/')?location.hash.slice(2).split('/').filter(Boolean)[0]:null;
   const baseParts=location.pathname.split('/').filter(Boolean);
   const repoIndex=baseParts.indexOf('Website-and-Pls124site');
-  const pathSlug=repoIndex>=0?baseParts[repoIndex+1]:null;
+  const pathSlug=hashRoute|| (repoIndex>=0?baseParts[repoIndex+1]:null);
   if(!oldId&&!pathSlug)return;
   document.body.innerHTML='<main style="height:100vh;background:#fff"><div id="siteStatus" style="font:16px Arial;padding:20px;color:#222">Loading published website…</div><iframe id="publishedFrame" title="Published website" sandbox="allow-scripts allow-forms allow-modals" style="display:none;border:0;width:100%;height:100%"></iframe></main>';
   try{
