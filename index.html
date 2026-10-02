@@ -5,13 +5,13 @@
 </style></head><body>
 <header><b>◈ Website and Pls124site</b><span>Build • Save • Preview</span><span style="margin-left:auto" id="accountLabel">Local workspace</span></header>
 <main class="wrap"><section class="hero"><h1>Your projects, your playground.</h1><p class="muted">Create website projects with index.html or Pls124site projects with a .PosLol file.</p></section>
-<section id="home"><div class="row" style="margin-top:20px"><h2 style="flex:2">Your projects</h2><button onclick="showCreate()">＋ New project</button></div><div id="projects"></div><p class="muted">Demo saves in this browser only. It is not a cloud account or public hosting service yet.</p></section>
+<section id="home"><div class="row" style="margin-top:20px"><h2 style="flex:2">Your projects</h2><button onclick="showCreate()">＋ New project</button></div><div id="projects"></div><p class="muted">Your drafts are saved in this browser. Use Share to add a copy to the public community library.</p><section class="panel"><div class="row"><div><h2>Community projects</h2><p class="muted">Browse, preview, and download projects shared by others.</p></div><button class="secondary" onclick="loadCommunity()">Refresh</button></div><div id="communityStatus" class="muted">Loading shared projects…</div><div id="communityProjects"></div></section></section>
 <section id="create" class="panel hidden"><h2>Create a project</h2><label>Project name</label><input id="pname" placeholder="My awesome project"><label>About this project</label><textarea id="pabout" placeholder="What are you building?"></textarea><label>Project type</label><select id="ptype"><option value="Website">Website (index.html)</option><option value="Pls124site">Pls124site (.PosLol)</option></select><div class="row"><button onclick="makeProject()">Next →</button><button class="secondary" onclick="cancelCreate()">Cancel</button></div></section>
-<section id="work" class="panel hidden"><div class="row"><div><h2 id="workTitle">Project</h2><p class="muted" id="workAbout"></p></div><button class="secondary" onclick="goHome()">← Projects</button></div><label>File</label><select id="fileChoice" onchange="selectFile()"></select><div class="filelist">You can edit the starter file below. Text files are stored locally in this demo.</div><textarea class="editor" id="editor" spellcheck="false"></textarea><div class="row"><button onclick="saveFile()">Save file</button><button class="secondary" onclick="preview()">Run preview</button><button class="secondary" onclick="downloadSite()">Download website</button><button class="secondary" onclick="addFile()">＋ Add file</button><button class="danger" onclick="deleteProject()">Delete project</button></div><h3>Preview</h3><iframe id="previewFrame" title="Live website preview" sandbox="allow-scripts" style="width:100%;height:340px;background:white;border:1px solid #30363d;border-radius:8px"></iframe><div class="preview" id="preview" style="display:none"></div><p class="muted">Preview runs your HTML in an isolated frame. Download the main HTML file to publish it with a hosting service.</p><p class="muted" id="route"></p></section>
+<section id="work" class="panel hidden"><div class="row"><div><h2 id="workTitle">Project</h2><p class="muted" id="workAbout"></p></div><button class="secondary" onclick="goHome()">← Projects</button></div><label>File</label><select id="fileChoice" onchange="selectFile()"></select><div class="filelist">You can edit the starter file below. Text files are stored locally in this demo.</div><textarea class="editor" id="editor" spellcheck="false"></textarea><div class="row"><button onclick="saveFile()">Save file</button><button onclick="shareProject()">Share to community</button><button class="secondary" onclick="preview()">Run preview</button><button class="secondary" onclick="downloadSite()">Download main file</button><button class="secondary" onclick="downloadProject()">Download all files</button><button class="secondary" onclick="addFile()">＋ Add file</button><button class="danger" onclick="deleteProject()">Delete project</button></div><h3>Preview</h3><iframe id="previewFrame" title="Live website preview" sandbox="allow-scripts" style="width:100%;height:340px;background:white;border:1px solid #30363d;border-radius:8px"></iframe><div class="preview" id="preview" style="display:none"></div><p class="muted">Shared copies are publicly viewable and downloadable. Do not include passwords, private data, or secrets in project files.</p><p class="muted" id="route"></p></section>
 </main>
 <script>
 'use strict';
-const KEY='wpls_projects_v1';let projects=[];let current=null;const $=id=>document.getElementById(id);
+const KEY='wpls_projects_v1';const SB_URL='https://zujeqysqocugesvugbxc.supabase.co';const SB_KEY='sb_publishable_qIH26Xfw3Sl9JrYnyeWE0A_haltSKXE';let projects=[];let current=null;const $=id=>document.getElementById(id);
 try{const saved=JSON.parse(localStorage.getItem(KEY)||'[]');projects=Array.isArray(saved)?saved:[]}catch(e){projects=[]}
 function persist(){localStorage.setItem(KEY,JSON.stringify(projects))}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -30,4 +30,57 @@ function downloadSite(){if(!current)return;const main=current.files[current.main
 function deleteProject(){if(!current||!confirm('Delete this project from this browser?'))return;projects=projects.filter(p=>p.id!==current.id);persist();goHome()}
 function goHome(){current=null;$('work').classList.add('hidden');$('home').classList.remove('hidden');render()}
 render();
+const apiHeaders={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'};
+async function loadCommunity(){
+  $('communityStatus').textContent='Loading shared projects…';
+  try{
+    const res=await fetch(SB_URL+'/rest/v1/shared_projects?select=id,project_name,about,project_type,main_file,files,created_at&order=created_at.desc&limit=60',{headers:apiHeaders});
+    if(!res.ok)throw new Error(await res.text());
+    const rows=await res.json(),root=$('communityProjects');root.replaceChildren();
+    $('communityStatus').textContent=rows.length?rows.length+' shared project(s)':'No shared projects yet. Be the first to share one!';
+    rows.forEach(p=>{
+      const card=document.createElement('div');card.className='project';
+      const info=document.createElement('div'),title=document.createElement('h3'),about=document.createElement('div'),tag=document.createElement('div');
+      title.textContent=p.project_name;about.className='muted';about.textContent=p.about||'No description';tag.className='tag';tag.textContent=(p.project_type||'Project')+' · '+Object.keys(p.files||{}).length+' file(s)';
+      info.append(title,about,tag);
+      const actions=document.createElement('div');actions.className='row';
+      const prev=document.createElement('button');prev.className='secondary';prev.textContent='Preview';prev.onclick=()=>previewShared(p);
+      const dl=document.createElement('button');dl.textContent='Download';dl.onclick=()=>downloadShared(p);
+      actions.append(prev,dl);card.append(info,actions);root.append(card);
+    });
+  }catch(e){$('communityStatus').textContent='Could not load shared projects. Check that the SQL setup has been run in Supabase.';console.error(e)}
+}
+async function shareProject(){
+  if(!current)return;
+  current.files[$('fileChoice').value]=$('editor').value;persist();
+  const payload={project_name:current.name,about:current.about||'',project_type:current.type,main_file:current.main,files:current.files};
+  try{
+    const res=await fetch(SB_URL+'/rest/v1/shared_projects',{method:'POST',headers:{...apiHeaders,'Prefer':'return=minimal'},body:JSON.stringify(payload)});
+    if(!res.ok)throw new Error(await res.text());
+    alert('Shared to the community! Other people can now preview and download this copy.');
+    goHome();loadCommunity();
+  }catch(e){alert('Share failed. Run the Supabase SQL first, then try again.');console.error(e)}
+}
+function previewShared(p){
+  const main=p.files&&p.files[p.main_file];
+  if(typeof main!=='string'){alert('This shared project has no readable main file.');return}
+  const frame=$('previewFrame');frame.srcdoc=main;
+  $('home').classList.add('hidden');$('create').classList.add('hidden');$('work').classList.remove('hidden');
+  $('workTitle').textContent='Community preview: '+p.project_name;$('workAbout').textContent=p.about||'Shared project';
+  $('fileChoice').replaceChildren();$('editor').value=main;$('route').textContent='Read-only community preview';
+  $('editor').readOnly=true;
+  $('fileChoice').disabled=true;
+  document.querySelector('#work button[onclick="shareProject()"]').disabled=true;
+  document.querySelector('#work button[onclick="saveFile()"]').disabled=true;
+}
+function downloadShared(p){
+  const blob=new Blob([JSON.stringify({name:p.project_name,about:p.about,type:p.project_type,main:p.main_file,files:p.files},null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=(slug(p.project_name)||'shared-project')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function downloadProject(){
+  if(!current)return;current.files[$('fileChoice').value]=$('editor').value;persist();
+  const blob=new Blob([JSON.stringify({name:current.name,about:current.about,type:current.type,main:current.main,files:current.files},null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=(slug(current.name)||'project')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+loadCommunity();
 </script></body></html>
