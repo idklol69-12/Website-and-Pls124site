@@ -7,7 +7,7 @@
 <main class="wrap"><section class="hero"><h1>Your projects, your playground.</h1><p class="muted">Create website projects with index.html or Pls124site projects with a .PosLol file.</p></section>
 <section id="home"><div class="row" style="margin-top:20px"><h2 style="flex:2">Your projects</h2><button onclick="showCreate()">＋ New project</button></div><div id="projects"></div><p class="muted">Your drafts are saved in this browser. Use Share to add a copy to the public community library.</p><section class="panel"><div class="row"><div><h2>Community projects</h2><p class="muted">Browse, preview, and download projects shared by others.</p></div><button class="secondary" onclick="loadCommunity()">Refresh</button></div><div id="communityStatus" class="muted">Loading shared projects…</div><div id="communityProjects"></div></section></section>
 <section id="create" class="panel hidden"><h2>Create a project</h2><label>Project name</label><input id="pname" placeholder="My awesome project"><label>About this project</label><textarea id="pabout" placeholder="What are you building?"></textarea><label>Project type</label><select id="ptype"><option value="Website">Website (index.html)</option><option value="Pls124site">Pls124site (.PosLol)</option></select><div class="row"><button onclick="makeProject()">Next →</button><button class="secondary" onclick="cancelCreate()">Cancel</button></div></section>
-<section id="work" class="panel hidden"><div class="row"><div><h2 id="workTitle">Project</h2><p class="muted" id="workAbout"></p></div><button class="secondary" onclick="goHome()">← Projects</button></div><label>File</label><select id="fileChoice" onchange="selectFile()"></select><div class="filelist">You can edit the starter file below. Text files are stored locally in this demo.</div><textarea class="editor" id="editor" spellcheck="false"></textarea><div class="row"><button onclick="saveFile()">Save file</button><button onclick="shareProject()">Share to community</button><button class="secondary" onclick="preview()">Run preview</button><button class="secondary" onclick="downloadSite()">Download main file</button><button class="secondary" onclick="downloadProject()">Download all files</button><button class="secondary" onclick="addFile()">＋ Add file</button><button class="danger" onclick="deleteProject()">Delete project</button></div><h3>Preview</h3><iframe id="previewFrame" title="Live website preview" sandbox="allow-scripts" style="width:100%;height:340px;background:white;border:1px solid #30363d;border-radius:8px"></iframe><div class="preview" id="preview" style="display:none"></div><p class="muted">Shared copies are publicly viewable and downloadable. Do not include passwords, private data, or secrets in project files.</p><p class="muted" id="route"></p></section>
+<section id="work" class="panel hidden"><div class="row"><div><h2 id="workTitle">Project</h2><p class="muted" id="workAbout"></p></div><button class="secondary" onclick="goHome()">← Projects</button></div><label>File</label><select id="fileChoice" onchange="selectFile()"></select><div class="filelist">You can edit the starter file below. Text files are stored locally in this demo.</div><textarea class="editor" id="editor" spellcheck="false"></textarea><div class="row"><button onclick="saveFile()">Save file</button><button onclick="shareProject()">Share to community</button><button class="secondary" onclick="preview()">Run preview</button><button class="secondary" onclick="downloadSite()">Download main file</button><button class="secondary" onclick="downloadProject()">Download project ZIP</button><button class="secondary" onclick="addFile()">＋ Add file</button><button class="danger" onclick="deleteProject()">Delete project</button></div><h3>Preview</h3><iframe id="previewFrame" title="Live website preview" sandbox="allow-scripts" style="width:100%;height:340px;background:white;border:1px solid #30363d;border-radius:8px"></iframe><div class="preview" id="preview" style="display:none"></div><p class="muted">Shared copies are publicly viewable and downloadable. Do not include passwords, private data, or secrets in project files.</p><p class="muted" id="route"></p></section>
 </main>
 <script>
 'use strict';
@@ -73,14 +73,29 @@ function previewShared(p){
   document.querySelector('#work button[onclick="shareProject()"]').disabled=true;
   document.querySelector('#work button[onclick="saveFile()"]').disabled=true;
 }
+function crc32(bytes){let c=0xffffffff;for(const b of bytes){c^=b;for(let k=0;k<8;k++)c=(c>>>1)^((c&1)?0xedb88320:0)}return(c^0xffffffff)>>>0}
+function zipBlob(files){
+  const enc=new TextEncoder(),parts=[],central=[];let offset=0;
+  const u16=n=>[n&255,(n>>>8)&255],u32=n=>[n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255];
+  for(const [filename,content] of Object.entries(files||{})){
+    const name=enc.encode(filename),data=enc.encode(String(content)),crc=crc32(data);
+    const local=new Uint8Array([...u32(0x04034b50),...u16(20),...u16(0),...u16(0),...u16(0),...u16(0),...u32(crc),...u32(data.length),...u32(data.length),...u16(name.length),...u16(0),...name,...data]);
+    parts.push(local);
+    const c=new Uint8Array([...u32(0x02014b50),...u16(20),...u16(20),...u16(0),...u16(0),...u16(0),...u16(0),...u32(crc),...u32(data.length),...u32(data.length),...u16(name.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(offset),...name]);
+    central.push(c);offset+=local.length;
+  }
+  const centralSize=central.reduce((n,b)=>n+b.length,0),end=new Uint8Array([...u32(0x06054b50),...u16(0),...u16(0),...u16(central.length),...u16(central.length),...u32(centralSize),...u32(offset),...u16(0)]);
+  return new Blob([...parts,...central,end],{type:'application/zip'});
+}
+function triggerDownload(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500)}
 function downloadShared(p){
-  const blob=new Blob([JSON.stringify({name:p.project_name,about:p.about,type:p.project_type,main:p.main_file,files:p.files},null,2)],{type:'application/json'});
-  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=(slug(p.project_name)||'shared-project')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  const files={...(p.files||{})};
+  if(!Object.keys(files).length){alert('This shared project has no files.');return}
+  triggerDownload(zipBlob(files),(slug(p.project_name)||'shared-project')+'.zip');
 }
 function downloadProject(){
   if(!current)return;current.files[$('fileChoice').value]=$('editor').value;persist();
-  const blob=new Blob([JSON.stringify({name:current.name,about:current.about,type:current.type,main:current.main,files:current.files},null,2)],{type:'application/json'});
-  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=(slug(current.name)||'project')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  triggerDownload(zipBlob(current.files),(slug(current.name)||'project')+'.zip');
 }
 loadCommunity();
 </script></body></html>
