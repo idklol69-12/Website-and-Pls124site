@@ -20,7 +20,7 @@ function deployGithubProject(){const raw=$('githubRepo').value.trim();let u;try{
 function pickProjectFile(){$('projectFileInput').click()}
 function pickProjectFolder(){$('projectFolderInput').click()}
 function safeUploadPath(path){return String(path||'').replace(/\\/g,'/').split('/').filter(part=>part&&part!=='.'&&part!=='..').join('/')}
-function readUploadedFile(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(reader.error||new Error('Could not read file'));reader.readAsDataURL(file)})}
+function readUploadedFile(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(reader.error||new Error('Could not read file'));reader.readAsText(file)})}
 function importProjectFiles(fileList){
   const files=Array.from(fileList||[]);
   if(!files.length)return;
@@ -29,17 +29,17 @@ function importProjectFiles(fileList){
       const filesObj={};let main=null;let projectName='';
       for(const file of files){
         const path=safeUploadPath(file.webkitRelativePath||file.name);if(!path)continue;
-        const type=file.type||'';const isText=/^(text\\/|application\\/(javascript|json|xml)|image\\/svg\\+xml)/.test(type)||/\\.(html?|css|js|mjs|json|txt|md|xml|csv|svg)$/i.test(path);
+        if(!path)continue;
+        const isText=/\.(html?|css|js|mjs|json|txt|md|xml|csv|svg)$/i.test(path);
         if(!isText){$('uploadStatus').textContent='Skipped unsupported binary file: '+path;continue}
         filesObj[path]=await readUploadedFile(file);
-        if(!main&&/\\/(index\\.html?|main\\.html?)$/i.test('/'+path))main=path;
-        if(!main&&/^(index\\.html?|main\\.html?)$/i.test(path))main=path;
-        if(!projectName)projectName=(file.webkitRelativePath||file.name).split('/')[0].replace(/\\.[^.]+$/,'');
+        if(!main&&/(^|\/)(index\.html?|main\.html?)$/i.test(path))main=path;
+        if(!projectName)projectName=(file.webkitRelativePath||file.name).split('/')[0].replace(/\.[^.]+$/,'');
       }
       if(!Object.keys(filesObj).length){alert('No supported files were found.');return}
-      main=main||Object.keys(filesObj).find(f=>/\\.html?$/i.test(f));
+      main=main||Object.keys(filesObj).find(f=>/\.html?$/i.test(f));
       if(!main){alert('Please upload a project containing an HTML file.');return}
-      const name=(projectName||main.replace(/\\.[^.]+$/,'')).trim()||'Imported Website';
+      const name=(projectName||main.replace(/\.[^.]+$/,'')).trim()||'Imported Website';
       const id=String(Date.now());
       projects.push({id,name,about:'Imported from your computer',type:'Website',main,files:filesObj});
       persist();render();$('projectFileInput').value='';$('projectFolderInput').value='';$('uploadStatus').textContent='Imported '+Object.keys(filesObj).length+' file(s).';openProject(id);
